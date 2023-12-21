@@ -8,10 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AngleSharp" Version="1.0.7" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\models\models.csproj" />
   </ItemGroup>
 
