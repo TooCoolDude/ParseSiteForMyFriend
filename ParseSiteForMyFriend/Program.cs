@@ -1,12 +1,5 @@
-﻿using AngleSharp.Dom;
-using AngleSharp.Html.Dom;
-using AngleSharp.Html.Parser;
-using ParseSiteForMyFriend.Core;
-using ParseSiteForMyFriend.Core.Habra;
-using System;
-using System.Collections;
-using System.Net;
-using System.Text.RegularExpressions;
+﻿using AngleSharp.Html.Parser;
+using System.Text.Json;
 
 namespace ParseSiteForMyFriend
 {
@@ -22,11 +15,12 @@ namespace ParseSiteForMyFriend
         static async Task Main(string[] args)
         {
 
-            
-            
+
             Task.WaitAll(downloads.ToArray());
 
             var result = await GetLevels();
+
+            File.WriteAllText("serialized.json", JsonSerializer.Serialize(result));
 
         }
 
@@ -47,69 +41,53 @@ namespace ParseSiteForMyFriend
             return index.ToString("D" + numCount);
         }
 
-        //private static Level[] GetLevels(IHtmlDocument document)
-        //{
-        //    Level[] levels = document
-        //        .GetElementsByTagName("section")
-        //        .Where(e => e.ClassName == "beginners")
-        //        .Where(e => e.InnerHtml.Contains("English Level"))
-        //        .First()
-        //        .GetElementsByTagName("ul")
-        //        .First()
-        //        .GetElementsByTagName("a")
-        //        .Select(e =>
-        //        {
-        //            var level = new Level(string
-        //                .Join(" ", e.GetElementsByTagName("b")
-        //                .First().InnerHtml.Split(new[] { " ", "\t", "\n" }, StringSplitOptions.RemoveEmptyEntries)), GetExercises(e));
-        //            return level;
-        //        })
-        //        .ToArray();
-
-        //    return levels;
-        //}
-
         private static async Task<Level[]> GetLevels()
         {
 
             Level[] levels = new Level[8];
 
             //English for Children (I)
-            List<Exercise> exForChildren = await GetExercises(3, "https://www.rong-chang.com/easykids/ekid/easykid{index}.htm",
-                "https://www.rong-chang.com/easykids/audio/ekid{index}.mp3");
+            List<Exercise> exForChildren = await GetExercises(3, "https://www.rong-chang.com/easykids/ekid/easykid{index}.htm");
             levels[0] = new Level("English for Children (I)", exForChildren.ToArray());
 
             //English for Children (II)
-            var exForChildren2 = await GetExercises(3, "https://www.rong-chang.com/children/kid/kid_{index}.htm",
-                "https://www.rong-chang.com/children/audio/kid_{index}.mp3");
+            var exForChildren2 = await GetExercises(3, "https://www.rong-chang.com/children/kid/kid_{index}.htm");
             levels[1] = new Level("English for Children (II)", exForChildren.ToArray());
 
             //English Level 1
+            var exLvl1 = await GetExercises(3, "https://www.eslfast.com/begin1/b1/b1{index}.htm");
+            levels[2] = new Level("English Level 1", exLvl1.ToArray());
 
-            var eng1 = await GetExercises(3, "https://www.eslfast.com/begin1/b1/b1{index}.htm",
-                "https://www.eslfast.com/begin1/audio/b1001c.mp3");
+            //English Level 2
+            var exLvl2 = await GetExercises(3, "https://www.eslfast.com/begin2/b2/b2{index}.htm");
+            levels[3] = new Level("English Level 2", exLvl2.ToArray());
 
-            //var exLvl1 = new List<Exercise>();
-            //for (int i = 0; ; i++)
-            //{
-            //    var ex = await GetExercise(i, 3, "https://www.rong-chang.com/children/kid/kid_{index}.htm",
-            //        "https://www.rong-chang.com/children/audio/kid_{index}.mp3");
-            //    if (ex == null)
-            //        break;
-            //    exForChildren.Add(ex);
-            //}
-            //levels[2] = new Level("English Level 1", exForChildren.ToArray());
+            //English Level 3
+            var exLvl3 = await GetExercises(3, "https://www.eslfast.com/begin3/b3/b3{index}.htm");
+            levels[4] = new Level("English Level 3", exLvl3.ToArray());
+
+            //English Level 4
+            var exLvl4 = await GetExercises(3, "https://www.eslfast.com/begin4/b4/b4{index}.htm");
+            levels[5] = new Level("English Level 4", exLvl4.ToArray());
+
+            //English Level 5
+            var exLvl5 = await GetExercises(3, "https://www.eslfast.com/begin5/b5/b5{index}.htm");
+            levels[6] = new Level("English Level 5", exLvl5.ToArray());
+
+            //English Level 6
+            var exLvl6 = await GetExercises(3, "https://www.eslfast.com/begin6/b6/b6{index}.htm");
+            levels[7] = new Level("English Level 6", exLvl6.ToArray());
 
 
             return levels;
         }
 
-        private static async Task<List<Exercise>> GetExercises(int numCount, string basePage, string baseAudio)
+        private static async Task<List<Exercise>> GetExercises(int numCount, string basePage)
         {
             List<Exercise> exercises = new();
             for (int i = 1; ; i++)
             {
-                var ex = await GetExercise(i, 3, basePage, baseAudio);
+                var ex = await GetExercise(i, 3, basePage);
                 if (ex == null)
                     break;
                 exercises.Add(ex);
@@ -117,11 +95,14 @@ namespace ParseSiteForMyFriend
             return exercises;
         }
 
-        private static async Task<Exercise> GetExercise(int num, int numCount, string pageBaseUrl, string audioBaseUrl)
+        private static async Task<Exercise> GetExercise(int num, int numCount, string pageBaseUrl)
         {
-            var response = await client.GetAsync(pageBaseUrl.Replace("{index}", GetIndex(num, numCount)));
 
-            var audioUrl = audioBaseUrl.Replace("{index}", GetIndex(num, numCount));
+            var exerciseUrl = pageBaseUrl.Replace("{index}", GetIndex(num, numCount));
+
+            var response = await client.GetAsync(exerciseUrl);
+
+            string audioUrl;
 
             if (!response.IsSuccessStatusCode)
             {
@@ -138,14 +119,26 @@ namespace ParseSiteForMyFriend
 
             var document = await parser.ParseDocumentAsync(source);
 
+            audioUrl = document.GetElementById("audio").GetAttribute("src").Replace("..", GetAudioBaseUrl(pageBaseUrl));
+
             downloads.Add(DownloadAndSave(audioUrl, Directory.GetCurrentDirectory() + "\\audio", audioName));
 
-            var name = document
+            string name = null;
+
+            var elementWithName = document
                 .GetElementsByClassName("main-header")
-                .First()
-                .GetElementsByTagName("b")
-                .First()
-                .InnerHtml;
+                .First() ;
+            if (!(elementWithName.GetElementsByTagName("b").Length == 0))
+            {
+                name = elementWithName.GetElementsByTagName("b").First().InnerHtml;
+            }
+            else
+            {
+                name = elementWithName.GetElementsByTagName("font").First().InnerHtml;
+            }
+            
+
+
 
             var text = string.Join(" ", document
                 .GetElementsByClassName("timed all-p")
@@ -157,7 +150,14 @@ namespace ParseSiteForMyFriend
                 .Split(" ", StringSplitOptions.RemoveEmptyEntries));
 
 
-            return new Exercise(name, guid, text);
+            return new Exercise(name, guid, text, audioUrl, exerciseUrl);
+        }
+
+        private static string GetAudioBaseUrl(string pageBaseUrl)
+        {
+            var s = pageBaseUrl.Split('/');
+            var r = string.Join('/', s.Take(s.Length - 2));
+            return r;
         }
 
         private static async Task DownloadAndSave(string sourceFile, string destinationFolder, string destinationFileName)
@@ -172,16 +172,9 @@ namespace ParseSiteForMyFriend
 
         private static async Task<Stream> GetFileStream(string fileUrl)
         {
-            HttpClient httpClient = new HttpClient();
-            try
-            {
-                Stream fileStream = await httpClient.GetStreamAsync(fileUrl);
-                return fileStream;
-            }
-            catch (Exception ex)
-            {
-                return Stream.Null;
-            }
+            //HttpClient httpClient = new HttpClient();
+            Stream fileStream = await client.GetStreamAsync(fileUrl);
+            return fileStream;
         }
 
         private static async Task SaveStream(Stream fileStream, string destinationFolder, string destinationFileName)
