@@ -3,7 +3,9 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using ParseSiteForMyFriend.Core;
 using ParseSiteForMyFriend.Core.Habra;
+using System;
 using System.Text.RegularExpressions;
+using static System.Net.WebRequestMethods;
 
 namespace ParseSiteForMyFriend
 {
@@ -29,13 +31,13 @@ namespace ParseSiteForMyFriend
 
             var document = await parser.ParseDocumentAsync(source);
 
-            var levels = GetLevels(document);
+            var levels = await GetLevels(document);
 
         }
 
-        private static Level[] GetLevels(IHtmlDocument document)
+        private static async Task<Level[]> GetLevels(IHtmlDocument document)
         {
-            Level[] levels = document
+            var levels = await Task.WhenAll(document
                 .GetElementsByTagName("section")
                 .Where(e => e.ClassName == "beginners")
                 .Where(e => e.InnerHtml.Contains("English Level"))
@@ -43,31 +45,45 @@ namespace ParseSiteForMyFriend
                 .GetElementsByTagName("ul")
                 .First()
                 .GetElementsByTagName("a")
-                .Select(e =>
+                .Select(async e =>
                 {
+                    var ex = await GetExercises(e);
                     var level = new Level(string
                         .Join(" ", e.GetElementsByTagName("b")
-                        .First().InnerHtml.Split(new[] { " ", "\t", "\n" }, StringSplitOptions.RemoveEmptyEntries)), GetExercises(e));
+                        .First().InnerHtml.Split(new[] { " ", "\t", "\n" }, StringSplitOptions.RemoveEmptyEntries)), ex);
                     return level;
                 })
-                .ToArray();
+                .ToArray());
             
             return levels;
         }
 
-        private static Exercise[] GetExercises(IElement e)
+        private static async Task<Exercise[]> GetExercises(IElement e)
         {
             var link = e.GetAttribute("href");
-            
-            if (link.StartsWith("http"))
+            if (!link.Contains("https"))
             {
-
+                link = "https://www.rong-chang.com" + link;
             }
-            
-            else
+
+            var response = await client.GetAsync(link);
+            if (!response.IsSuccessStatusCode)
             {
-
+                Console.WriteLine(response.StatusCode);
+                return null;
             }
+
+            var source = await response.Content.ReadAsStringAsync();
+
+            var parser = new HtmlParser();
+
+            var document = await parser.ParseDocumentAsync(source);
+
+            List<Exercise> exercises = new();
+
+            var exLinks = document
+                .GetElementsByTagName("a")
+                .ToArray();
 
             return null;
         }
